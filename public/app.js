@@ -152,6 +152,7 @@ function updateRoomActions() {
     const covers = [...cards.values()].filter((c) => c.data.room === name && c.data.type === 'cover');
     section.querySelector('.room-actions').hidden = covers.length < 2;
   }
+  document.getElementById('house-actions').hidden = ![...cards.values()].some((c) => c.data.type === 'cover');
 }
 
 function updateSummary(devices) {
@@ -200,12 +201,18 @@ async function runAction(id, action, position) {
   }
 }
 
+// room === null : tous les volets de l'appartement.
 async function roomAction(room, action, btn) {
-  const covers = [...cards.values()].filter((c) => c.data.room === room && c.data.type === 'cover' && c.data.online);
+  const covers = [...cards.values()].filter(
+    (c) => (room === null || c.data.room === room) && c.data.type === 'cover' && c.data.online
+  );
   btn.disabled = true;
   await Promise.all(covers.map((c) => runAction(c.data.id, action)));
   btn.disabled = false;
 }
+
+const closeAllBtn = document.getElementById('close-all');
+closeAllBtn.addEventListener('click', () => roomAction(null, 'close', closeAllBtn));
 
 // ---- Actualisation périodique --------------------------------------------------
 
