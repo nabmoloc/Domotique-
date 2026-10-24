@@ -596,6 +596,17 @@ const TRANSPORT = new URLSearchParams(location.search).get('transport') || (loca
 // Chrome y interdit tout accès au réseau local, quelle que soit la méthode.
 const BLOCKED_ORIGIN = location.protocol === 'content:' || (!window.isSecureContext && location.protocol !== 'http:');
 
+// Une adresse IPv4 saisie hors des plages du réseau local est presque toujours une faute de frappe.
+function isPublicIPv4(host) {
+  const m = host.replace(/^https?:\/\//, '').match(/^(\d{1,3})\.(\d{1,3})\.\d{1,3}\.\d{1,3}(:\d+)?\/?$/);
+  if (!m) return false;
+  const [a, b] = [Number(m[1]), Number(m[2])];
+  const local = a === 10 || a === 127 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254);
+  return !local;
+}
+
+const PUBLIC_IP_HINT = 'cette adresse n\'est pas une adresse du réseau local (elles commencent en général par 192.168.) : vérifiez la saisie';
+
 // Espace d'adresses visé, annoncé à Chrome (« loopback » pour la machine elle-même).
 function addressSpace(host) {
   return /^(https?:\/\/)?(localhost|127\.|\[::1\])/.test(host) ? 'loopback' : 'local';
@@ -703,6 +714,7 @@ function deviceAction(d, action, position) {
 async function readState(d) {
   const view = { ...d, type: d.type === 'cover' ? 'cover' : 'switch', room: d.room || 'Autres', webUrl: baseUrl(d.host) };
   if (!d.host) return { ...view, online: false, error: 'adresse IP non renseignée' };
+  if (isPublicIPv4(d.host)) return { ...view, online: false, error: PUBLIC_IP_HINT };
   try {
     return { ...view, online: true, status: await drivers[d.type](d) };
   } catch (err) {
@@ -951,6 +963,11 @@ function addRow(device = { name: '', room: '', type: 'cover', host: '' }) {
     if (!d.host) {
       out.className = 'test-result err';
       out.textContent = 'Renseignez une adresse IP.';
+      return;
+    }
+    if (isPublicIPv4(d.host)) {
+      out.className = 'test-result err';
+      out.textContent = `✗ ${PUBLIC_IP_HINT}`;
       return;
     }
     out.className = 'test-result';
