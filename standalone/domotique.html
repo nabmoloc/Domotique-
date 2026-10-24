@@ -222,7 +222,7 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
   font: inherit; font-size: 14px; color: var(--text); background: var(--bg);
   border: 1px solid var(--border); border-radius: 8px; padding: 7px 8px; width: 100%; min-width: 0;
 }
-.dev-row .test-result { grid-column: 1 / -1; font-size: 12.5px; color: var(--muted); margin: 0; }
+.dev-row .test-result { grid-column: 1 / -1; font-size: 12.5px; color: var(--muted); margin: 0; white-space: pre-line; overflow-wrap: anywhere; }
 .dev-row .test-result.ok { color: var(--ok); }
 .dev-row .test-result.err { color: var(--err); }
 .dev-row .test-result:empty { display: none; }
@@ -582,15 +582,18 @@ const sockets = new Map();
 function closeSockets() {
   sockets.forEach((s) => s.close());
   sockets.clear();
+  hostTransport.clear();
 }
 
-// Mode de connexion selon la façon dont la page est ouverte :
-// - https (hébergement en ligne) : HTTP via fetch(). Chrome demande l'autorisation
-//   d'accéder au réseau local, puis lève le blocage « contenu mixte » pour les IP
-//   locales. Les WebSockets ws:// restent interdits depuis une page https.
-// - fichier local ou http : WebSocket (pas de restriction CORS, mot de passe géré).
+// Mode de connexion :
+// - WebSocket (ws://<ip>/rpc) : pas de restriction CORS, mot de passe géré. Utilisé en
+//   fichier local ou en http, et essayé en premier depuis une page https.
+// - HTTP via fetch() : depuis une page https, Chrome demande l'autorisation d'accéder au
+//   réseau local puis lève le blocage « contenu mixte » pour les IP locales ; le module
+//   doit alors autoriser les appels depuis une page web (CORS).
 // « ?transport=http » ou « ?transport=ws » dans l'adresse force un mode.
-const TRANSPORT = new URLSearchParams(location.search).get('transport') || (location.protocol === 'https:' ? 'http' : 'ws');
+const FORCED_TRANSPORT = new URLSearchParams(location.search).get('transport');
+const hostTransport = new Map(); // hôte -> 'ws' | 'http'
 
 // Fichier ouvert depuis l'appli Fichiers d'Android (content://) ou autre contexte non sécurisé :
 // Chrome y interdit tout accès au réseau local, quelle que soit la méthode.
@@ -614,21 +617,64 @@ function addressSpace(host) {
 
 const LNA_HINT = 'autorisez l\'accès aux appareils du réseau local (icône à gauche de l\'adresse → Autorisations)';
 
+async function lnaPermission() {
+  for (const name of ['local-network-access', 'local-network']) {
+    try {
+      return (await navigator.permissions.query({ name })).state;
+    } catch {}
+  }
+  return null;
+}
+
+function localFetch(device, path, options = {}) {
+  return fetch(baseUrl(device.host) + path, {
+    cache: 'no-store',
+    targetAddressSpace: addressSpace(device.host),
+    signal: AbortSignal.timeout(TIMEOUT),
+    ...options,
+  });
+}
+
 // Quand la connexion échoue, cherche la cause la plus probable pour l'afficher.
 async function diagnose(device) {
   if (BLOCKED_ORIGIN) {
     return 'Chrome bloque l\'accès au réseau local pour un fichier ouvert depuis le téléphone : ouvrez la version en ligne (https)';
   }
   try {
-    await fetch(baseUrl(device.host) + '/', { mode: 'no-cors', cache: 'no-store', targetAddressSpace: addressSpace(device.host), signal: AbortSignal.timeout(TIMEOUT) });
-    return `le module répond, mais le navigateur bloque la connexion : ${LNA_HINT}`;
+    await localFetch(device, '/', { mode: 'no-cors' });
   } catch {
     return `module injoignable depuis ce navigateur : vérifiez l'adresse IP et le Wi-Fi, ou ${LNA_HINT}`;
   }
+  // /shelly répond toujours, même quand l'authentification est activée.
+  const info = await localFetch(device, '/shelly').then((r) => r.json(), () => null).catch(() => null);
+  if (info?.auth_en) {
+    return 'mot de passe activé sur le module : désactivez l\'authentification (interface du module → Settings → Authentication)';
+  }
+  if (info) return 'le module répond mais refuse la commande : utilisez « Tester » pour le diagnostic détaillé';
+  if ((await lnaPermission()) === 'granted') {
+    return 'le module répond, mais refuse les appels depuis une page web (CORS) : utilisez « Tester » pour le diagnostic détaillé';
+  }
+  return `le module répond, mais le navigateur bloque la connexion : ${LNA_HINT}`;
+}
+
+function socketFor(device) {
+  const key = `${device.host}|${device.password || ''}`;
+  if (!sockets.has(key)) sockets.set(key, new ShellySocket(device.host, device.password));
+  return sockets.get(key);
+}
+
+async function transportFor(device) {
+  if (FORCED_TRANSPORT) return FORCED_TRANSPORT;
+  if (location.protocol !== 'https:') return 'ws';
+  if (!hostTransport.has(device.host)) {
+    const ok = await socketFor(device).open().then(() => true, () => false);
+    hostTransport.set(device.host, ok ? 'ws' : 'http');
+  }
+  return hostTransport.get(device.host);
 }
 
 async function rpc(device, method, params = {}) {
-  if (TRANSPORT === 'http') {
+  if ((await transportFor(device)) === 'http') {
     try {
       return await shellyGet(device, `/rpc/${method}?${new URLSearchParams(params)}`);
     } catch (err) {
@@ -638,14 +684,53 @@ async function rpc(device, method, params = {}) {
       throw err;
     }
   }
-  const key = `${device.host}|${device.password || ''}`;
-  if (!sockets.has(key)) sockets.set(key, new ShellySocket(device.host, device.password));
   try {
-    return await sockets.get(key).call(method, params);
+    return await socketFor(device).call(method, params);
   } catch (err) {
     if (err.connect) throw new Error(await diagnose(device));
     throw err;
   }
+}
+
+// Rapport détaillé affiché par « Tester » en cas d'échec (à envoyer en capture d'écran).
+async function report(device) {
+  const lines = [];
+  const yes = (v) => (v ? 'oui' : 'non');
+  const fail = (err) => `échec (${err.name}: ${err.message})`;
+  lines.push(`Page : ${location.protocol.replace(':', '')}, contexte sécurisé : ${yes(window.isSecureContext)}`);
+  lines.push(`Navigateur : ${(navigator.userAgent.match(/(Chrome|Firefox|Version)\/[\d.]+/) || ['?'])[0]}`);
+  lines.push(`Autorisation réseau local : ${(await lnaPermission()) || 'inconnue'}`);
+  try {
+    await localFetch(device, '/', { mode: 'no-cors' });
+    lines.push('Module joignable : oui');
+  } catch (err) {
+    lines.push(`Module joignable : ${fail(err)}`);
+  }
+  try {
+    const res = await localFetch(device, '/shelly');
+    const info = await res.json();
+    lines.push(`/shelly (HTTP) : OK, ${info.model || info.type || '?'}, gen ${info.gen ?? 1}, firmware ${info.ver || info.fw || '?'}, mot de passe ${yes(info.auth_en ?? info.auth)}`);
+  } catch (err) {
+    lines.push(`/shelly (HTTP) : ${fail(err)}`);
+  }
+  if (device.type !== 'switch-gen1') {
+    try {
+      const res = await localFetch(device, '/rpc/Shelly.GetDeviceInfo');
+      lines.push(`RPC (HTTP) : HTTP ${res.status}`);
+    } catch (err) {
+      lines.push(`RPC (HTTP) : ${fail(err)}`);
+    }
+    const socket = new ShellySocket(device.host, device.password);
+    try {
+      await socket.call('Shelly.GetDeviceInfo');
+      lines.push('RPC (WebSocket) : OK');
+    } catch (err) {
+      lines.push(`RPC (WebSocket) : échec (${err.message})`);
+    } finally {
+      socket.close();
+    }
+  }
+  return lines.join('\n');
 }
 
 async function shellyGet(device, path) {
@@ -659,7 +744,6 @@ async function shellyGet(device, path) {
     });
   } catch (err) {
     if (err.name === 'TimeoutError') throw new Error('module injoignable (délai dépassé)');
-    if (BLOCKED_ORIGIN) throw new Error(await diagnose(device));
     if (device.type === 'switch-gen1') {
       throw new Error(`accès bloqué : activez l'option CORS dans les réglages du module Gen1, vérifiez l'adresse IP, ou ${LNA_HINT}`);
     }
@@ -972,6 +1056,7 @@ function addRow(device = { name: '', room: '', type: 'cover', host: '' }) {
     }
     out.className = 'test-result';
     out.textContent = 'Test en cours…';
+    hostTransport.delete(d.host);
     try {
       const info = d.type === 'switch-gen1' ? await shellyGet(d, '/shelly') : await rpc(d, 'Shelly.GetDeviceInfo');
       await drivers[d.type](d);
@@ -979,7 +1064,8 @@ function addRow(device = { name: '', room: '', type: 'cover', host: '' }) {
       out.textContent = `✓ Connecté : ${info.name || info.app || info.model || info.type || 'module Shelly'}${info.ver ? ` (firmware ${info.ver})` : ''}`;
     } catch (err) {
       out.className = 'test-result err';
-      out.textContent = `✗ ${err.message}`;
+      out.textContent = `✗ ${err.message}\n\nDiagnostic en cours…`;
+      out.textContent = `✗ ${err.message}\n\nDiagnostic :\n${await report(d)}`;
     }
   });
   rowsEl.append(row);

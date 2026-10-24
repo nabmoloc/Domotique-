@@ -142,6 +142,11 @@ function startDevice(port, name, handlers, password, { cors = !process.env.SIM_N
     // Comme les vrais modules Gen2+, autorise les appels depuis une page web (CORS).
     // SIM_NO_CORS=1 simule un module qui ne l'autorise pas.
     if (cors) res.setHeader('Access-Control-Allow-Origin', '*');
+    // /shelly reste accessible sans mot de passe, comme sur les vrais modules.
+    if (req.url === '/shelly') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ name, id: `shelly-${port}`, model: 'SIM', gen: 4, ver: '1.0.0', app: 'Simulator', auth_en: Boolean(password) }));
+    }
     if (password && !checkDigest(req, password, realm)) {
       res.writeHead(401, {
         'WWW-Authenticate': `Digest qop="auth", realm="${realm}", nonce="${Date.now()}", algorithm=SHA-256`,
@@ -189,7 +194,7 @@ function startDevice(port, name, handlers, password, { cors = !process.env.SIM_N
     });
   });
 
-  return server.listen(port, '127.0.0.1', () => console.log(`  ${name} simulé sur http://127.0.0.1:${port}`));
+  return server.listen(port, process.env.SIM_HOST || '127.0.0.1', () => console.log(`  ${name} simulé sur le port ${port}`));
 }
 
 function startSimulator() {
