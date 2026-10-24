@@ -1,0 +1,10 @@
+{
+  "port": 8080,
+  "pollInterval": 3000,
+  "devices": [
+    { "id": "volet-salon-1", "name": "Volet salon (baie)", "room": "Salon", "type": "cover", "host": "127.0.0.1:9001" },
+    { "id": "volet-salon-2", "name": "Volet salon (fenêtre)", "room": "Salon", "type": "cover", "host": "127.0.0.1:9002" },
+    { "id": "lumiere-salon", "name": "Éclairage salon", "room": "Salon", "type": "switch", "host": "127.0.0.1:9004" },
+    { "id": "volet-chambre", "name": "Volet chambre", "room": "Chambre", "type": "cover", "host": "127.0.0.1:9003", "password": "demo" }
+  ]
+}

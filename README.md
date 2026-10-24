@@ -1,0 +1,120 @@
+# Domotique – tableau de bord Shelly
+
+Tableau de bord web pour piloter les modules Shelly de l'appartement :
+
+- **3 × Shelly 2PM Gen4** en mode volet (2 au salon, 1 dans la chambre) : état, ouverture, fermeture, stop et position précise (curseur 0–100 %).
+- **1 prise connectée** pour l'éclairage du salon : allumer / éteindre, consommation instantanée.
+- Un lien **« Réglages »** sur chaque carte ouvre l'interface web du module (plannings, actions, calibration…).
+- Boutons **Tout ouvrir / Tout fermer** pour les pièces qui ont plusieurs volets.
+- Actualisation automatique (toutes les 3 s, chaque seconde pendant un mouvement), thème clair/sombre, utilisable sur téléphone (ajout possible à l'écran d'accueil).
+
+![Aperçu](docs/apercu.png)
+
+## Fonctionnement
+
+```
+Navigateur (PC / téléphone) ──► serveur Node.js (ce projet) ──► modules Shelly (Wi-Fi, réseau local)
+```
+
+Le serveur tourne sur une machine du réseau local (Raspberry Pi, NAS, PC…) et dialogue avec les modules via leur API HTTP locale (RPC Gen2+). Aucun cloud, aucune dépendance npm : il suffit de **Node.js 18 ou plus récent**.
+
+## Installation
+
+```bash
+git clone https://github.com/nabmoloc/Domotique-.git domotique
+cd domotique
+cp config.example.json config.json
+# éditer config.json avec les adresses IP de vos modules
+npm start
+```
+
+Puis ouvrir `http://<ip-de-la-machine>:8080` depuis n'importe quel appareil du réseau.
+
+> Conseil : attribuez une **adresse IP fixe** à chaque module (réservation DHCP dans votre box), sinon les adresses peuvent changer après un redémarrage.
+
+### Essayer sans matériel
+
+```bash
+npm run demo
+```
+
+Lance un simulateur de 3 volets et d'une prise, et le tableau de bord sur `http://localhost:8080`.
+
+## Configuration (`config.json`)
+
+```json
+{
+  "port": 8080,
+  "pollInterval": 3000,
+  "requestTimeout": 3000,
+  "devices": [
+    { "id": "volet-salon-1", "name": "Volet salon (baie)", "room": "Salon", "type": "cover", "host": "192.168.1.51" },
+    { "id": "lumiere-salon", "name": "Éclairage salon", "room": "Salon", "type": "switch", "host": "192.168.1.54" }
+  ]
+}
+```
+
+| Champ | Description |
+|---|---|
+| `id` | Identifiant unique (lettres, chiffres, tirets) |
+| `name` | Nom affiché |
+| `room` | Pièce (regroupe les cartes) |
+| `type` | `cover` pour un volet (Shelly 2PM en mode volet), `switch` pour une prise ou un relais |
+| `host` | Adresse IP (ou nom d'hôte) du module, éventuellement avec un port |
+| `password` | *Optionnel* – mot de passe si l'authentification est activée sur le module |
+| `channel` | *Optionnel* – numéro de canal (0 par défaut) |
+| `generation` | *Optionnel* – `1` pour un ancien module Shelly Gen1 (ex. Shelly Plug S première génération), `2` par défaut (Plus, Pro, Gen3, Gen4) |
+| `webUrl` | *Optionnel* – lien « Réglages » personnalisé (par défaut `http://<host>`) |
+
+Variables d'environnement : `CONFIG` (chemin du fichier de configuration), `PORT`, `HOST`.
+
+### Prérequis côté modules
+
+- Les Shelly 2PM doivent être en **profil « Cover » (volet)**, et **calibrés** pour pouvoir utiliser le curseur de position. Sans calibration, seuls Ouvrir / Stop / Fermer sont disponibles (un message l'indique sur la carte).
+- La prise est supposée être une prise **Shelly** (Plug S, Plus Plug S, Plug S Gen3…). Pour une prise d'une autre marque, il faudra ajouter un pilote dans `lib/shelly.js`.
+
+## Lancer au démarrage (Raspberry Pi / Linux)
+
+Créer `/etc/systemd/system/domotique.service` :
+
+```ini
+[Unit]
+Description=Tableau de bord domotique
+After=network-online.target
+
+[Service]
+WorkingDirectory=/home/pi/domotique
+ExecStart=/usr/bin/node server.js
+Restart=always
+User=pi
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Puis : `sudo systemctl enable --now domotique`.
+
+## API
+
+| Méthode | Route | Description |
+|---|---|---|
+| `GET` | `/api/devices` | État de tous les modules |
+| `GET` | `/api/devices/:id` | État d'un module |
+| `POST` | `/api/devices/:id/action` | Commande. Corps JSON : `{"action":"open"\|"close"\|"stop"}`, `{"action":"position","position":50}` (volets) ou `{"action":"on"\|"off"\|"toggle"}` (prises) |
+
+## Sécurité
+
+Le tableau de bord n'a pas d'authentification : il est prévu pour rester **sur le réseau local**. Ne l'exposez pas directement sur Internet ; pour un accès à distance, passez par un VPN (WireGuard, Tailscale…).
+
+## Développement
+
+```bash
+npm test   # tests (serveur + simulateur, auth Digest comprise)
+```
+
+Structure :
+
+- `server.js` – serveur HTTP (API + fichiers statiques)
+- `lib/shelly.js` – client Shelly (RPC Gen2+, REST Gen1, auth Digest/Basic)
+- `public/` – interface web (HTML/CSS/JS sans framework)
+- `tools/` – simulateur et mode démo

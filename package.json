@@ -1,0 +1,17 @@
+{
+  "name": "domotique",
+  "version": "1.0.0",
+  "description": "Tableau de bord domotique pour modules Shelly (volets et prises)",
+  "main": "server.js",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "simulator": "node tools/simulator.js",
+    "demo": "node tools/demo.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}

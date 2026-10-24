@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f4f5f7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#14161a" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Domotique">
+  <title>Domotique</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>Mon appartement</h1>
+      <p class="subtitle" id="summary">Chargement…</p>
+    </div>
+    <button class="icon-btn" id="refresh" type="button" title="Actualiser" aria-label="Actualiser">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>
+    </button>
+  </header>
+
+  <main id="rooms" aria-live="polite"></main>
+
+  <div class="toast" id="toast" role="status" hidden></div>
+
+  <template id="tpl-room">
+    <section class="room">
+      <div class="room-head">
+        <h2 class="room-name"></h2>
+        <div class="room-actions" hidden>
+          <button type="button" class="chip" data-room-action="open">Tout ouvrir</button>
+          <button type="button" class="chip" data-room-action="close">Tout fermer</button>
+        </div>
+      </div>
+      <div class="grid"></div>
+    </section>
+  </template>
+
+  <template id="tpl-cover">
+    <article class="card cover">
+      <div class="card-head">
+        <div>
+          <h3 class="name"></h3>
+          <span class="badge"></span>
+        </div>
+        <a class="web-link" target="_blank" rel="noopener" title="Ouvrir l'interface du module">
+          Réglages
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
+        </a>
+      </div>
+      <div class="cover-body">
+        <div class="window" aria-hidden="true">
+          <div class="shutter"></div>
+        </div>
+        <div class="cover-controls">
+          <div class="position">
+            <span class="position-value">–</span>
+            <span class="position-label">ouvert</span>
+          </div>
+          <input class="slider" type="range" min="0" max="100" step="1" aria-label="Position du volet">
+          <p class="hint" hidden>Position non calibrée : lancez la calibration depuis l'interface du module.</p>
+          <div class="buttons">
+            <button type="button" class="btn" data-action="open" aria-label="Ouvrir">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg>Ouvrir
+            </button>
+            <button type="button" class="btn" data-action="stop" aria-label="Stop">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>Stop
+            </button>
+            <button type="button" class="btn" data-action="close" aria-label="Fermer">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>Fermer
+            </button>
+          </div>
+        </div>
+      </div>
+      <p class="meta"></p>
+    </article>
+  </template>
+
+  <template id="tpl-switch">
+    <article class="card switch">
+      <div class="card-head">
+        <div>
+          <h3 class="name"></h3>
+          <span class="badge"></span>
+        </div>
+        <a class="web-link" target="_blank" rel="noopener" title="Ouvrir l'interface du module">
+          Réglages
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
+        </a>
+      </div>
+      <button type="button" class="power" data-action="toggle" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.4 1 1.1 1 1.8V16h5v-.3c0-.7.4-1.4 1-1.8A6 6 0 0 0 12 3z"/>
+        </svg>
+        <span class="power-label">–</span>
+      </button>
+      <p class="meta"></p>
+    </article>
+  </template>
+
+  <script src="app.js"></script>
+</body>
+</html>
