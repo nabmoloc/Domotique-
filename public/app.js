@@ -211,8 +211,10 @@ async function roomAction(room, action, btn) {
   btn.disabled = false;
 }
 
-const closeAllBtn = document.getElementById('close-all');
-closeAllBtn.addEventListener('click', () => roomAction(null, 'close', closeAllBtn));
+for (const [id, action] of [['open-all', 'open'], ['close-all', 'close']]) {
+  const btn = document.getElementById(id);
+  btn.addEventListener('click', () => roomAction(null, action, btn));
+}
 
 // ---- Actualisation périodique --------------------------------------------------
 

@@ -82,7 +82,8 @@ main { max-width: 1100px; margin: 0 auto; padding: 0 16px 40px; }
 .room-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
 .room-name { margin: 0; font-size: 18px; }
 .room-actions { display: flex; gap: 8px; }
-.house-actions { max-width: 1100px; margin: 12px auto 0; padding: 0 16px; }
+.house-actions { max-width: 1100px; margin: 12px auto 0; padding: 0 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.house-label { font-weight: 600; margin-right: 4px; }
 .house-actions .chip { display: inline-flex; align-items: center; gap: 6px; padding: 10px 16px; font-size: 14px; }
 
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
@@ -264,8 +265,12 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
   </header>
 
   <div class="house-actions" id="house-actions" hidden>
+    <span class="house-label">Tous les volets</span>
+    <button type="button" class="chip" id="open-all">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg>Ouvrir
+    </button>
     <button type="button" class="chip" id="close-all">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>Fermer tous les volets
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>Fermer
     </button>
   </div>
 
@@ -1013,8 +1018,10 @@ async function roomAction(room, action, btn) {
   btn.disabled = false;
 }
 
-const closeAllBtn = document.getElementById('close-all');
-closeAllBtn.addEventListener('click', () => roomAction(null, 'close', closeAllBtn));
+for (const [id, action] of [['open-all', 'open'], ['close-all', 'close']]) {
+  const btn = document.getElementById(id);
+  btn.addEventListener('click', () => roomAction(null, action, btn));
+}
 
 // ---- Actualisation périodique --------------------------------------------------
 
