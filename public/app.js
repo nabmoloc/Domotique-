@@ -68,14 +68,64 @@ function createCard(device) {
 
   if (device.type === 'cover') {
     const slider = el.querySelector('.slider');
+    const wrap = el.querySelector('.slider-wrap');
     const value = el.querySelector('.position-value');
-    slider.addEventListener('input', () => {
-      el.dataset.dragging = '1';
-      value.textContent = `${slider.value} %`;
-    });
-    slider.addEventListener('change', async () => {
+    const show = () => (value.textContent = `${slider.value} %`);
+    const commit = async () => {
       await runAction(device.id, 'position', Number(slider.value));
       delete el.dataset.dragging;
+    };
+
+    // Clavier : comportement natif du curseur.
+    slider.addEventListener('input', () => {
+      el.dataset.dragging = '1';
+      show();
+    });
+    slider.addEventListener('change', commit);
+
+    // Souris et toucher : le curseur ne réagit qu'à un glissement horizontal, pour qu'un
+    // défilement de la page commencé sur le curseur ne déplace pas le volet.
+    let start = null;
+    let dragging = false;
+    const moveTo = (clientX) => {
+      const r = slider.getBoundingClientRect();
+      slider.value = Math.round(Math.min(1, Math.max(0, (clientX - r.left) / r.width)) * 100);
+      show();
+    };
+    const begin = (e) => {
+      dragging = true;
+      el.dataset.dragging = '1';
+      wrap.setPointerCapture(e.pointerId);
+      moveTo(e.clientX);
+    };
+    const reset = () => {
+      start = null;
+      dragging = false;
+    };
+    wrap.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      start = { x: e.clientX, y: e.clientY };
+      if (e.pointerType === 'mouse') begin(e);
+    });
+    wrap.addEventListener('pointermove', (e) => {
+      if (!start) return;
+      if (dragging) return moveTo(e.clientX);
+      const dx = Math.abs(e.clientX - start.x);
+      const dy = Math.abs(e.clientY - start.y);
+      if (dx > 8 && dx > dy) begin(e);
+      else if (dy > 8) reset(); // défilement vertical : on laisse faire la page
+    });
+    wrap.addEventListener('pointerup', () => {
+      const wasDragging = dragging;
+      reset();
+      if (wasDragging) commit();
+    });
+    wrap.addEventListener('pointercancel', () => {
+      if (dragging) {
+        delete el.dataset.dragging;
+        updateCard(cards.get(device.id).data); // rétablit la position réelle
+      }
+      reset();
     });
   }
 
@@ -117,7 +167,7 @@ function updateCard(device) {
     const slider = el.querySelector('.slider');
     const hint = el.querySelector('.hint');
     const calibrated = s.positionControl && s.position !== null;
-    slider.hidden = !calibrated;
+    el.querySelector('.slider-wrap').hidden = !calibrated;
     hint.hidden = calibrated;
 
     if (!el.dataset.dragging) {
