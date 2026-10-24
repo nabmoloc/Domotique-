@@ -10,7 +10,30 @@ Tableau de bord web pour piloter les modules Shelly de l'appartement :
 
 ![Aperçu](docs/apercu.png)
 
-## Fonctionnement
+## Deux versions
+
+| | Version autonome (`standalone/domotique.html`) | Version serveur (`npm start`) |
+|---|---|---|
+| Installation | Aucune : un seul fichier HTML à ouvrir | Node.js sur une machine allumée en permanence |
+| Configuration | Dans l'appli (bouton ⚙), stockée dans le navigateur | Fichier `config.json` |
+| Mot de passe sur les modules | Non supporté | Supporté |
+| Accès depuis le téléphone | Le fichier doit être ouvert sur chaque appareil | Une simple adresse web, partagée par tous les appareils |
+
+### Version autonome (sans serveur)
+
+1. Téléchargez [`standalone/domotique.html`](standalone/domotique.html) et ouvrez-le dans le navigateur (double-clic).
+2. Au premier lancement, la fenêtre **Modules** s'ouvre : renseignez l'adresse IP de chaque module, cliquez sur **Tester** pour vérifier la connexion, puis **Enregistrer**.
+3. Utilisez **Exporter / Importer** pour recopier la configuration sur un autre appareil.
+
+Le navigateur dialogue directement avec les modules (les Shelly Gen2+ autorisent ces appels via CORS). Conditions :
+
+- l'appareil doit être sur le **même réseau Wi-Fi** que les modules ;
+- les modules ne doivent **pas avoir de mot de passe** (authentification désactivée dans leur interface web) ;
+- le fichier doit être ouvert **en local** (`file://`) ou depuis un hébergement **http** du réseau local : une page en **https** (GitHub Pages, par ex.) ne peut pas appeler les modules, qui sont en http ;
+- les navigateurs récents peuvent demander l'autorisation d'**accéder aux appareils du réseau local** : acceptez ;
+- pour une prise Shelly **Gen1**, choisissez le type « Prise Gen1 » et activez l'option CORS dans les réglages de la prise.
+
+## Fonctionnement (version serveur)
 
 ```
 Navigateur (PC / téléphone) ──► serveur Node.js (ce projet) ──► modules Shelly (Wi-Fi, réseau local)
@@ -117,4 +140,5 @@ Structure :
 - `server.js` – serveur HTTP (API + fichiers statiques)
 - `lib/shelly.js` – client Shelly (RPC Gen2+, REST Gen1, auth Digest/Basic)
 - `public/` – interface web (HTML/CSS/JS sans framework)
-- `tools/` – simulateur et mode démo
+- `standalone/domotique.html` – version autonome, tout-en-un (sans serveur)
+- `tools/` – simulateur et mode démo (`npm run simulator` pour tester la version autonome : modules sur `127.0.0.1:9001` à `9004`, le `9003` est protégé par mot de passe, sauf si `SIM_PASSWORD=` est défini vide)

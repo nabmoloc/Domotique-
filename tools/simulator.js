@@ -82,6 +82,8 @@ function startDevice(port, name, handlers, password) {
   const realm = `shelly-${name}`;
   return http
     .createServer((req, res) => {
+      // Comme les vrais modules Gen2+, autorise les appels depuis une page web (CORS).
+      res.setHeader('Access-Control-Allow-Origin', '*');
       if (password && !checkDigest(req, password, realm)) {
         res.writeHead(401, {
           'WWW-Authenticate': `Digest qop="auth", realm="${realm}", nonce="${Date.now()}", algorithm=SHA-256`,
@@ -94,7 +96,9 @@ function startDevice(port, name, handlers, password) {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         return res.end(`<h1>${name}</h1><p>Interface web simulée du module Shelly.</p>`);
       }
-      const handler = handlers[method];
+      const handler =
+        handlers[method] ||
+        (method === 'Shelly.GetDeviceInfo' && (() => ({ name, id: `shelly-${port}`, model: 'SIM', gen: 4, app: 'Simulator', ver: '1.0.0' })));
       if (!url.pathname.startsWith('/rpc/') || !handler) {
         res.writeHead(404, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ code: 404, message: `No handler for ${method}` }));
@@ -110,7 +114,7 @@ function startSimulator() {
   return [
     startDevice(9001, 'volet-salon-1', createCover(100)),
     startDevice(9002, 'volet-salon-2', createCover(40)),
-    startDevice(9003, 'volet-chambre', createCover(0), process.env.SIM_PASSWORD || 'demo'),
+    startDevice(9003, 'volet-chambre', createCover(0), process.env.SIM_PASSWORD ?? 'demo'),
     startDevice(9004, 'lumiere-salon', createSwitch()),
   ];
 }

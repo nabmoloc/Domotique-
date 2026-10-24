@@ -1,0 +1,818 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f4f5f7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#14161a" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <title>Domotique</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232f6fed'/%3E%3Cpath d='M14 30L32 15l18 15v19a2 2 0 0 1-2 2H16a2 2 0 0 1-2-2z' fill='%23fff'/%3E%3C/svg%3E">
+  <!-- Version autonome : un seul fichier, aucun serveur. Le navigateur dialogue
+       directement avec les modules Shelly du réseau local. -->
+  <style>
+:root {
+  --bg: #f4f5f7;
+  --card: #ffffff;
+  --text: #1b1d22;
+  --muted: #6b7280;
+  --border: #e3e5ea;
+  --accent: #2f6fed;
+  --accent-soft: #e6eefd;
+  --on: #f5a524;
+  --on-soft: #fff4dd;
+  --ok: #1f9d55;
+  --warn: #d97706;
+  --err: #dc2626;
+  --sky-top: #bfdcff;
+  --sky-bottom: #e9f3ff;
+  --slat: #9aa3b2;
+  --slat-line: #858e9e;
+  --radius: 16px;
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.05), 0 4px 16px rgba(16, 24, 40, 0.06);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14161a;
+    --card: #1e2127;
+    --text: #eceef2;
+    --muted: #9aa1ad;
+    --border: #2c3038;
+    --accent: #5b8ff9;
+    --accent-soft: #23314d;
+    --on: #f7b955;
+    --on-soft: #3a2f1a;
+    --sky-top: #24406b;
+    --sky-bottom: #33547f;
+    --slat: #59606d;
+    --slat-line: #4a505b;
+    --shadow: none;
+  }
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: calc(20px + env(safe-area-inset-top)) 16px 8px;
+}
+h1 { margin: 0; font-size: 24px; }
+.subtitle { margin: 2px 0 0; color: var(--muted); }
+
+main { max-width: 1100px; margin: 0 auto; padding: 0 16px 40px; }
+
+.room { margin-top: 24px; }
+.room-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.room-name { margin: 0; font-size: 18px; }
+.room-actions { display: flex; gap: 8px; }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  transition: opacity 0.2s;
+}
+.card.offline .cover-body, .card.offline .power { opacity: 0.45; pointer-events: none; }
+.card.busy { cursor: progress; }
+
+.card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.name { margin: 0 0 4px; font-size: 16px; font-weight: 600; }
+
+.badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12.5px; color: var(--muted);
+}
+.badge::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.badge.ok::before { background: var(--ok); }
+.badge.moving::before { background: var(--accent); animation: pulse 1s infinite; }
+.badge.on::before { background: var(--on); }
+.badge.err { color: var(--err); }
+.badge.err::before { background: var(--err); }
+@keyframes pulse { 50% { opacity: 0.3; } }
+
+.web-link {
+  display: inline-flex; align-items: center; gap: 4px;
+  color: var(--muted); text-decoration: none; font-size: 13px;
+  padding: 4px 8px; border-radius: 8px;
+}
+.web-link svg { width: 15px; height: 15px; }
+.web-link:hover { color: var(--accent); background: var(--accent-soft); }
+
+/* ---- Volets ---- */
+.cover-body { display: flex; gap: 16px; align-items: stretch; }
+
+.window {
+  width: 84px; min-height: 150px; flex-shrink: 0;
+  border: 3px solid var(--border); border-radius: 8px;
+  background: linear-gradient(var(--sky-top), var(--sky-bottom));
+  position: relative; overflow: hidden;
+}
+.shutter {
+  position: absolute; left: 0; right: 0; top: 0;
+  height: 0%;
+  background: repeating-linear-gradient(var(--slat) 0 9px, var(--slat-line) 9px 11px);
+  border-bottom: 3px solid var(--slat-line);
+  transition: height 0.8s ease;
+}
+
+.cover-controls { flex: 1; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.position { display: flex; align-items: baseline; gap: 6px; }
+.position-value { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.position-label { color: var(--muted); }
+.hint { margin: 0; font-size: 12.5px; color: var(--warn); }
+
+.slider { width: 100%; accent-color: var(--accent); height: 28px; margin: 0; }
+
+.buttons { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: auto; }
+
+.btn, .chip, .icon-btn {
+  font: inherit; color: var(--text); cursor: pointer;
+  background: var(--bg); border: 1px solid var(--border);
+  transition: background 0.15s, border-color 0.15s, transform 0.05s;
+}
+.btn {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 8px 4px; border-radius: 12px; font-size: 13px;
+}
+.btn:hover, .chip:hover, .icon-btn:hover { border-color: var(--accent); }
+.btn:active, .chip:active, .power:active, .icon-btn:active { transform: scale(0.97); }
+.btn.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.chip { padding: 6px 12px; border-radius: 999px; font-size: 13px; }
+.icon-btn { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; }
+.icon-btn.spin svg { animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---- Prises ---- */
+.power {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  width: 100%; padding: 22px; border-radius: 14px; cursor: pointer;
+  font: inherit; font-size: 17px; font-weight: 600;
+  color: var(--muted); background: var(--bg); border: 1px solid var(--border);
+  transition: background 0.2s, color 0.2s, border-color 0.2s, transform 0.05s;
+}
+.power svg { width: 30px; height: 30px; }
+.power[aria-pressed="true"] { background: var(--on-soft); color: var(--on); border-color: var(--on); }
+
+.meta { margin: 0; font-size: 12.5px; color: var(--muted); min-height: 1.4em; }
+.meta.err { color: var(--err); }
+
+.empty { color: var(--muted); text-align: center; margin-top: 60px; }
+
+.toast {
+  position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+  background: var(--text); color: var(--bg);
+  padding: 10px 16px; border-radius: 12px; box-shadow: var(--shadow);
+  font-size: 14px;
+}
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+@media (max-width: 380px) {
+  .window { width: 64px; }
+}
+
+/* ---- Réglages (version autonome) ---- */
+.topbar-actions { display: flex; gap: 8px; }
+dialog {
+  width: min(720px, calc(100% - 32px)); max-height: calc(100% - 32px);
+  padding: 0; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--card); color: var(--text);
+}
+dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
+.dlg-head, .dlg-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 14px 16px; }
+.dlg-head { border-bottom: 1px solid var(--border); }
+.dlg-head h2 { margin: 0; font-size: 18px; }
+.dlg-foot { border-top: 1px solid var(--border); flex-wrap: wrap; }
+.dlg-foot .group { display: flex; gap: 8px; flex-wrap: wrap; }
+.dlg-body { padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; }
+.dlg-body .intro { margin: 0; color: var(--muted); font-size: 13.5px; }
+.dev-row {
+  display: grid; grid-template-columns: 1.4fr 1fr 0.9fr 1.2fr auto auto; gap: 8px; align-items: center;
+  padding: 10px; border: 1px solid var(--border); border-radius: 12px;
+}
+.dev-row input, .dev-row select {
+  font: inherit; font-size: 14px; color: var(--text); background: var(--bg);
+  border: 1px solid var(--border); border-radius: 8px; padding: 7px 8px; width: 100%; min-width: 0;
+}
+.dev-row .test-result { grid-column: 1 / -1; font-size: 12.5px; color: var(--muted); margin: 0; }
+.dev-row .test-result.ok { color: var(--ok); }
+.dev-row .test-result.err { color: var(--err); }
+.dev-row .test-result:empty { display: none; }
+.btn-text {
+  font: inherit; font-size: 14px; cursor: pointer; padding: 8px 14px; border-radius: 10px;
+  border: 1px solid var(--border); background: var(--bg); color: var(--text);
+}
+.btn-text.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-text.danger { color: var(--err); }
+.btn-text.small { padding: 6px 10px; font-size: 13px; }
+.empty button { margin-top: 12px; }
+@media (max-width: 640px) {
+  .dev-row { grid-template-columns: 1fr 1fr; }
+  .dev-row .name-input { grid-column: 1 / -1; }
+}
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>Mon appartement</h1>
+      <p class="subtitle" id="summary">Chargement…</p>
+    </div>
+    <div class="topbar-actions">
+      <button class="icon-btn" id="refresh" type="button" title="Actualiser" aria-label="Actualiser">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>
+      </button>
+      <button class="icon-btn" id="open-settings" type="button" title="Modules" aria-label="Configurer les modules">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main id="rooms" aria-live="polite"></main>
+
+  <div class="toast" id="toast" role="status" hidden></div>
+
+  <dialog id="settings">
+    <form method="dialog" id="settings-form">
+      <div class="dlg-head">
+        <h2>Modules</h2>
+        <button type="button" class="btn-text small" id="add-device">+ Ajouter</button>
+      </div>
+      <div class="dlg-body">
+        <p class="intro">Renseignez l'adresse IP de chaque module (ex. 192.168.1.51). La configuration est enregistrée dans ce navigateur ; utilisez Exporter / Importer pour la copier sur un autre appareil.</p>
+        <div id="device-rows"></div>
+      </div>
+      <div class="dlg-foot">
+        <div class="group">
+          <button type="button" class="btn-text small" id="export">Exporter</button>
+          <button type="button" class="btn-text small" id="import">Importer</button>
+          <input type="file" id="import-file" accept="application/json,.json" hidden>
+        </div>
+        <div class="group">
+          <button type="button" class="btn-text" id="cancel-settings">Annuler</button>
+          <button type="submit" class="btn-text primary">Enregistrer</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <template id="tpl-device-row">
+    <div class="dev-row">
+      <input class="name-input" data-field="name" placeholder="Nom" aria-label="Nom" required>
+      <input data-field="room" placeholder="Pièce" aria-label="Pièce">
+      <select data-field="type" aria-label="Type">
+        <option value="cover">Volet</option>
+        <option value="switch">Prise</option>
+        <option value="switch-gen1">Prise Gen1</option>
+      </select>
+      <input data-field="host" placeholder="Adresse IP" aria-label="Adresse IP" inputmode="decimal" autocapitalize="off" spellcheck="false">
+      <button type="button" class="btn-text small" data-row="test">Tester</button>
+      <button type="button" class="btn-text small danger" data-row="remove" aria-label="Supprimer">✕</button>
+      <p class="test-result"></p>
+    </div>
+  </template>
+  <template id="tpl-room">
+    <section class="room">
+      <div class="room-head">
+        <h2 class="room-name"></h2>
+        <div class="room-actions" hidden>
+          <button type="button" class="chip" data-room-action="open">Tout ouvrir</button>
+          <button type="button" class="chip" data-room-action="close">Tout fermer</button>
+        </div>
+      </div>
+      <div class="grid"></div>
+    </section>
+  </template>
+
+  <template id="tpl-cover">
+    <article class="card cover">
+      <div class="card-head">
+        <div>
+          <h3 class="name"></h3>
+          <span class="badge"></span>
+        </div>
+        <a class="web-link" target="_blank" rel="noopener" title="Ouvrir l'interface du module">
+          Réglages
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
+        </a>
+      </div>
+      <div class="cover-body">
+        <div class="window" aria-hidden="true">
+          <div class="shutter"></div>
+        </div>
+        <div class="cover-controls">
+          <div class="position">
+            <span class="position-value">–</span>
+            <span class="position-label">ouvert</span>
+          </div>
+          <input class="slider" type="range" min="0" max="100" step="1" aria-label="Position du volet">
+          <p class="hint" hidden>Position non calibrée : lancez la calibration depuis l'interface du module.</p>
+          <div class="buttons">
+            <button type="button" class="btn" data-action="open" aria-label="Ouvrir">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg>Ouvrir
+            </button>
+            <button type="button" class="btn" data-action="stop" aria-label="Stop">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>Stop
+            </button>
+            <button type="button" class="btn" data-action="close" aria-label="Fermer">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>Fermer
+            </button>
+          </div>
+        </div>
+      </div>
+      <p class="meta"></p>
+    </article>
+  </template>
+
+  <template id="tpl-switch">
+    <article class="card switch">
+      <div class="card-head">
+        <div>
+          <h3 class="name"></h3>
+          <span class="badge"></span>
+        </div>
+        <a class="web-link" target="_blank" rel="noopener" title="Ouvrir l'interface du module">
+          Réglages
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
+        </a>
+      </div>
+      <button type="button" class="power" data-action="toggle" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.4 1 1.1 1 1.8V16h5v-.3c0-.7.4-1.4 1-1.8A6 6 0 0 0 12 3z"/>
+        </svg>
+        <span class="power-label">–</span>
+      </button>
+      <p class="meta"></p>
+    </article>
+  </template>
+
+  <script>
+'use strict';
+
+// ---- Configuration (stockée dans le navigateur) --------------------------------
+
+const STORAGE_KEY = 'domotique.devices';
+const POLL_INTERVAL = 3000;
+const FAST_POLL = 1000;
+const TIMEOUT = 3000;
+const DEFAULT_DEVICES = [
+  { name: 'Volet salon (baie)', room: 'Salon', type: 'cover', host: '' },
+  { name: 'Volet salon (fenêtre)', room: 'Salon', type: 'cover', host: '' },
+  { name: 'Éclairage salon', room: 'Salon', type: 'switch', host: '' },
+  { name: 'Volet chambre', room: 'Chambre', type: 'cover', host: '' },
+];
+
+function loadDevices() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (Array.isArray(saved)) return saved;
+  } catch {}
+  return null;
+}
+
+function saveDevices(list) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+  } catch {
+    toast('Impossible d\'enregistrer dans ce navigateur : pensez à exporter la configuration.');
+  }
+}
+
+// ---- Client Shelly (appels directs depuis le navigateur) ------------------------
+
+function baseUrl(host) {
+  return /^https?:\/\//.test(host) ? host.replace(/\/$/, '') : `http://${host}`;
+}
+
+async function shellyGet(device, path) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT);
+  let res;
+  try {
+    // Requête GET simple, sans en-tête personnalisé : pas de pré-vérification CORS.
+    res = await fetch(baseUrl(device.host) + path, { cache: 'no-store', signal: controller.signal });
+  } catch (err) {
+    if (err.name === 'AbortError') throw new Error('module injoignable (délai dépassé)');
+    throw new Error('module injoignable (adresse, réseau ou accès bloqué par le navigateur)');
+  } finally {
+    clearTimeout(timer);
+  }
+  if (res.status === 401) throw new Error('mot de passe activé sur le module (non supporté par la version autonome)');
+  if (!res.ok) throw new Error(`erreur du module (HTTP ${res.status})`);
+  return res.json();
+}
+
+function rpc(device, method, params = {}) {
+  return shellyGet(device, `/rpc/${method}?${new URLSearchParams(params)}`);
+}
+
+const drivers = {
+  async cover(d) {
+    const s = await rpc(d, 'Cover.GetStatus', { id: 0 });
+    return {
+      state: s.state,
+      position: typeof s.current_pos === 'number' ? s.current_pos : null,
+      targetPosition: typeof s.target_pos === 'number' ? s.target_pos : null,
+      positionControl: Boolean(s.pos_control),
+      power: typeof s.apower === 'number' ? s.apower : null,
+    };
+  },
+  async switch(d) {
+    const s = await rpc(d, 'Switch.GetStatus', { id: 0 });
+    return { on: Boolean(s.output), power: typeof s.apower === 'number' ? s.apower : null };
+  },
+  async 'switch-gen1'(d) {
+    const s = await shellyGet(d, '/status');
+    const power = s.meters?.[0]?.power;
+    return { on: Boolean(s.relays?.[0]?.ison), power: typeof power === 'number' ? power : null };
+  },
+};
+
+function deviceAction(d, action, position) {
+  if (d.type === 'cover') {
+    if (action === 'open') return rpc(d, 'Cover.Open', { id: 0 });
+    if (action === 'close') return rpc(d, 'Cover.Close', { id: 0 });
+    if (action === 'stop') return rpc(d, 'Cover.Stop', { id: 0 });
+    if (action === 'position') return rpc(d, 'Cover.GoToPosition', { id: 0, pos: position });
+  } else if (d.type === 'switch') {
+    if (action === 'toggle') return rpc(d, 'Switch.Toggle', { id: 0 });
+  } else if (d.type === 'switch-gen1') {
+    if (action === 'toggle') return shellyGet(d, '/relay/0?turn=toggle');
+  }
+  return Promise.reject(new Error(`action « ${action} » non supportée`));
+}
+
+async function readState(d) {
+  const view = { ...d, type: d.type === 'cover' ? 'cover' : 'switch', room: d.room || 'Autres', webUrl: baseUrl(d.host) };
+  if (!d.host) return { ...view, online: false, error: 'adresse IP non renseignée' };
+  try {
+    return { ...view, online: true, status: await drivers[d.type](d) };
+  } catch (err) {
+    return { ...view, online: false, error: err.message };
+  }
+}
+
+// ---- Rendu -------------------------------------------------------------------
+
+const COVER_STATES = {
+  open: { label: 'Ouvert', cls: 'ok' },
+  closed: { label: 'Fermé', cls: 'ok' },
+  opening: { label: 'Ouverture…', cls: 'moving' },
+  closing: { label: 'Fermeture…', cls: 'moving' },
+  stopped: { label: 'Arrêté', cls: 'ok' },
+  calibrating: { label: 'Calibration…', cls: 'moving' },
+};
+
+const roomsEl = document.getElementById('rooms');
+const summaryEl = document.getElementById('summary');
+const refreshBtn = document.getElementById('refresh');
+const toastEl = document.getElementById('toast');
+
+let devices = [];
+let cards = new Map(); // id -> { el, data }
+let rooms = new Map(); // nom -> <section>
+let pollTimer = null;
+let pollGeneration = 0;
+
+function clone(id) {
+  return document.getElementById(id).content.firstElementChild.cloneNode(true);
+}
+
+function formatPower(watts) {
+  if (typeof watts !== 'number') return '';
+  return `${watts.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} W`;
+}
+
+function getRoom(name) {
+  if (rooms.has(name)) return rooms.get(name);
+  const section = clone('tpl-room');
+  section.querySelector('.room-name').textContent = name;
+  section.querySelectorAll('[data-room-action]').forEach((btn) => {
+    btn.addEventListener('click', () => roomAction(name, btn.dataset.roomAction, btn));
+  });
+  roomsEl.append(section);
+  rooms.set(name, section);
+  return section;
+}
+
+function createCard(device) {
+  const el = clone(device.type === 'cover' ? 'tpl-cover' : 'tpl-switch');
+  el.querySelector('.name').textContent = device.name;
+
+  if (device.type === 'cover') {
+    const slider = el.querySelector('.slider');
+    const value = el.querySelector('.position-value');
+    slider.addEventListener('input', () => {
+      el.dataset.dragging = '1';
+      value.textContent = `${slider.value} %`;
+    });
+    slider.addEventListener('change', async () => {
+      await runAction(device.id, 'position', Number(slider.value));
+      delete el.dataset.dragging;
+    });
+  }
+
+  el.querySelectorAll('[data-action]').forEach((btn) => {
+    btn.addEventListener('click', () => runAction(device.id, btn.dataset.action));
+  });
+
+  getRoom(device.room).querySelector('.grid').append(el);
+  return el;
+}
+
+function updateCard(device) {
+  let entry = cards.get(device.id);
+  if (!entry) {
+    entry = { el: createCard(device) };
+    cards.set(device.id, entry);
+  }
+  entry.data = device;
+  const { el } = entry;
+  const badge = el.querySelector('.badge');
+  const meta = el.querySelector('.meta');
+  const link = el.querySelector('.web-link');
+  link.href = device.webUrl;
+  link.hidden = !device.host;
+
+  el.classList.toggle('offline', !device.online);
+  meta.classList.toggle('err', !device.online);
+
+  if (!device.online) {
+    badge.className = 'badge err';
+    badge.textContent = 'Hors ligne';
+    meta.textContent = device.host ? `${device.host} — ${device.error}` : device.error;
+    return;
+  }
+
+  const s = device.status;
+  if (device.type === 'cover') {
+    const state = COVER_STATES[s.state] || { label: s.state, cls: '' };
+    badge.className = `badge ${state.cls}`;
+    badge.textContent = state.label;
+
+    const slider = el.querySelector('.slider');
+    const hint = el.querySelector('.hint');
+    const calibrated = s.positionControl && s.position !== null;
+    slider.hidden = !calibrated;
+    hint.hidden = calibrated;
+
+    if (!el.dataset.dragging) {
+      // Sans calibration, on déduit un état visuel approximatif.
+      const pos = calibrated ? s.position : s.state === 'closed' ? 0 : s.state === 'open' ? 100 : null;
+      el.querySelector('.position-value').textContent = pos === null ? '–' : `${pos} %`;
+      el.querySelector('.shutter').style.height = `${pos === null ? 50 : 100 - pos}%`;
+      if (calibrated) slider.value = s.position;
+    }
+
+    el.querySelector('[data-action="open"]').classList.toggle('active', s.state === 'opening');
+    el.querySelector('[data-action="close"]').classList.toggle('active', s.state === 'closing');
+
+    const parts = [];
+    if (s.power) parts.push(formatPower(s.power));
+    if (s.targetPosition !== null && state.cls === 'moving') parts.push(`vers ${s.targetPosition} %`);
+    meta.textContent = parts.join(' · ');
+  } else {
+    badge.className = `badge ${s.on ? 'on' : ''}`;
+    badge.textContent = s.on ? 'Allumé' : 'Éteint';
+    const btn = el.querySelector('.power');
+    btn.setAttribute('aria-pressed', String(s.on));
+    btn.querySelector('.power-label').textContent = s.on ? 'Éteindre' : 'Allumer';
+    meta.textContent = s.on && s.power !== null ? `Consommation : ${formatPower(s.power)}` : '';
+  }
+}
+
+function updateRoomActions() {
+  for (const [name, section] of rooms) {
+    const covers = [...cards.values()].filter((c) => c.data.room === name && c.data.type === 'cover');
+    section.querySelector('.room-actions').hidden = covers.length < 2;
+  }
+}
+
+function updateSummary(states) {
+  const online = states.filter((d) => d.online);
+  const covers = online.filter((d) => d.type === 'cover');
+  const openCovers = covers.filter((d) => d.status.state !== 'closed' && d.status.position !== 0);
+  const lightsOn = online.filter((d) => d.type === 'switch' && d.status.on);
+  const parts = [];
+  if (covers.length) parts.push(`${openCovers.length}/${covers.length} volet(s) ouvert(s)`);
+  parts.push(`${lightsOn.length} lumière(s) allumée(s)`);
+  if (online.length < states.length) parts.push(`${states.length - online.length} hors ligne`);
+  summaryEl.textContent = parts.join(' · ');
+}
+
+function resetView() {
+  roomsEl.textContent = '';
+  cards = new Map();
+  rooms = new Map();
+  if (devices.length === 0) {
+    roomsEl.innerHTML = '<div class="empty"><p>Aucun module configuré.</p><button type="button" class="btn-text primary">Ajouter des modules</button></div>';
+    roomsEl.querySelector('button').addEventListener('click', openSettings);
+    summaryEl.textContent = '';
+    return;
+  }
+  // Crée les pièces et les cartes dans l'ordre de la configuration.
+  devices.forEach((d) => updateCard({ ...d, type: d.type === 'cover' ? 'cover' : 'switch', room: d.room || 'Autres', webUrl: baseUrl(d.host), online: false, error: 'connexion…' }));
+  updateRoomActions();
+}
+
+// ---- Actions -----------------------------------------------------------------
+
+let toastTimer;
+function toast(message) {
+  toastEl.textContent = message;
+  toastEl.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (toastEl.hidden = true), 4000);
+}
+
+async function runAction(id, action, position) {
+  const entry = cards.get(id);
+  const device = devices.find((d) => d.id === id);
+  entry.el.classList.add('busy');
+  try {
+    await deviceAction(device, action, position);
+    updateCard(await readState(device));
+    schedulePoll(FAST_POLL);
+  } catch (err) {
+    toast(`${device.name} : ${err.message}`);
+  } finally {
+    entry.el.classList.remove('busy');
+  }
+}
+
+async function roomAction(room, action, btn) {
+  const covers = [...cards.values()].filter((c) => c.data.room === room && c.data.type === 'cover' && c.data.online);
+  btn.disabled = true;
+  await Promise.all(covers.map((c) => runAction(c.data.id, action)));
+  btn.disabled = false;
+}
+
+// ---- Actualisation périodique --------------------------------------------------
+
+function isMoving() {
+  return [...cards.values()].some((c) => c.data.online && COVER_STATES[c.data.status.state]?.cls === 'moving');
+}
+
+function schedulePoll(delay) {
+  clearTimeout(pollTimer);
+  pollTimer = setTimeout(poll, delay);
+}
+
+async function poll() {
+  clearTimeout(pollTimer);
+  if (devices.length === 0) return;
+  const generation = pollGeneration;
+  refreshBtn.classList.add('spin');
+  const states = await Promise.all(devices.map(readState));
+  refreshBtn.classList.remove('spin');
+  if (generation !== pollGeneration) return; // configuration modifiée entre-temps
+  states.forEach(updateCard);
+  updateRoomActions();
+  updateSummary(states);
+  if (!document.hidden) schedulePoll(isMoving() ? FAST_POLL : POLL_INTERVAL);
+}
+
+refreshBtn.addEventListener('click', poll);
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) clearTimeout(pollTimer);
+  else poll();
+});
+
+// ---- Réglages ------------------------------------------------------------------
+
+const dialog = document.getElementById('settings');
+const rowsEl = document.getElementById('device-rows');
+
+function addRow(device = { name: '', room: '', type: 'cover', host: '' }) {
+  const row = clone('tpl-device-row');
+  row.querySelectorAll('[data-field]').forEach((input) => (input.value = device[input.dataset.field] || ''));
+  row.querySelector('[data-row="remove"]').addEventListener('click', () => row.remove());
+  row.querySelector('[data-row="test"]').addEventListener('click', async () => {
+    const out = row.querySelector('.test-result');
+    const d = readRow(row);
+    if (!d.host) {
+      out.className = 'test-result err';
+      out.textContent = 'Renseignez une adresse IP.';
+      return;
+    }
+    out.className = 'test-result';
+    out.textContent = 'Test en cours…';
+    try {
+      const info = d.type === 'switch-gen1' ? await shellyGet(d, '/shelly') : await rpc(d, 'Shelly.GetDeviceInfo');
+      await drivers[d.type](d);
+      out.className = 'test-result ok';
+      out.textContent = `✓ Connecté : ${info.name || info.app || info.model || info.type || 'module Shelly'}${info.ver ? ` (firmware ${info.ver})` : ''}`;
+    } catch (err) {
+      out.className = 'test-result err';
+      out.textContent = `✗ ${err.message}`;
+    }
+  });
+  rowsEl.append(row);
+  return row;
+}
+
+function readRow(row) {
+  const d = {};
+  row.querySelectorAll('[data-field]').forEach((input) => (d[input.dataset.field] = input.value.trim()));
+  return d;
+}
+
+function openSettings() {
+  rowsEl.textContent = '';
+  (devices.length ? devices : DEFAULT_DEVICES).forEach((d) => addRow(d));
+  dialog.showModal();
+}
+
+function applyDevices(list) {
+  devices = list.map((d, i) => ({ ...d, id: `d${i}` }));
+  saveDevices(list);
+  pollGeneration++;
+  resetView();
+  poll();
+}
+
+function sanitize(list) {
+  if (!Array.isArray(list)) throw new Error('format invalide');
+  return list
+    .filter((d) => d && typeof d.name === 'string' && d.name.trim())
+    .map((d) => ({
+      name: d.name.trim(),
+      room: String(d.room || '').trim(),
+      type: ['cover', 'switch', 'switch-gen1'].includes(d.type) ? d.type : 'switch',
+      host: String(d.host || '').trim(),
+    }));
+}
+
+document.getElementById('open-settings').addEventListener('click', openSettings);
+document.getElementById('add-device').addEventListener('click', () => addRow().querySelector('input').focus());
+document.getElementById('cancel-settings').addEventListener('click', () => dialog.close());
+document.getElementById('settings-form').addEventListener('submit', () => {
+  applyDevices(sanitize([...rowsEl.children].map(readRow)));
+});
+
+document.getElementById('export').addEventListener('click', () => {
+  const list = sanitize([...rowsEl.children].map(readRow));
+  const blob = new Blob([JSON.stringify(list, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'domotique-config.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+const importInput = document.getElementById('import-file');
+document.getElementById('import').addEventListener('click', () => importInput.click());
+importInput.addEventListener('change', async () => {
+  const file = importInput.files[0];
+  importInput.value = '';
+  if (!file) return;
+  try {
+    const list = sanitize(JSON.parse(await file.text()));
+    rowsEl.textContent = '';
+    list.forEach((d) => addRow(d));
+  } catch (err) {
+    toast(`Import impossible : ${err.message}`);
+  }
+});
+
+// ---- Démarrage -------------------------------------------------------------------
+
+const saved = loadDevices();
+if (saved) {
+  applyDevices(saved);
+} else {
+  devices = [];
+  resetView();
+  openSettings();
+}
+  </script>
+</body>
+</html>
