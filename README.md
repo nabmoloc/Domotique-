@@ -16,22 +16,37 @@ Tableau de bord web pour piloter les modules Shelly de l'appartement :
 |---|---|---|
 | Installation | Aucune : un seul fichier HTML à ouvrir | Node.js sur une machine allumée en permanence |
 | Configuration | Dans l'appli (bouton ⚙), stockée dans le navigateur | Fichier `config.json` |
-| Mot de passe sur les modules | Supporté (Gen2+) | Supporté |
-| Accès depuis le téléphone | Le fichier doit être ouvert sur chaque appareil | Une simple adresse web, partagée par tous les appareils |
+| Mot de passe sur les modules | Supporté en fichier local sur PC, pas en ligne | Supporté |
+| Accès depuis le téléphone | Via une adresse https (GitHub Pages…), configuration par appareil | Une adresse web locale, configuration partagée |
 
 ### Version autonome (sans serveur)
 
-1. Téléchargez [`standalone/domotique.html`](standalone/domotique.html) et ouvrez-le dans le navigateur (double-clic).
-2. Au premier lancement, la fenêtre **Modules** s'ouvre : renseignez l'adresse IP de chaque module, cliquez sur **Tester** pour vérifier la connexion, puis **Enregistrer**.
-3. Utilisez **Exporter / Importer** pour recopier la configuration sur un autre appareil.
+Le fichier [`standalone/domotique.html`](standalone/domotique.html) contient toute l'appli. Il s'utilise de deux façons :
 
-Le navigateur dialogue directement avec les modules Gen2+ par **WebSocket** (`ws://<ip>/rpc`), comme l'interface web du module elle-même : ce canal n'est pas soumis aux restrictions CORS des navigateurs, et l'authentification par mot de passe est gérée. Conditions :
+| Ouverture | Connexion aux modules | Mot de passe des modules | Où |
+|---|---|---|---|
+| **En ligne, en https** (recommandé sur téléphone) | HTTP, après autorisation « Appareils du réseau local » dans Chrome | Non supporté | Android, PC |
+| **Fichier local** (double-clic) | WebSocket `ws://<ip>/rpc` | Supporté | PC uniquement |
 
-- l'appareil doit être sur le **même réseau Wi-Fi** que les modules ;
-- si l'authentification est activée sur un module, renseignez son mot de passe dans ⚙ Modules (il est stocké dans le navigateur et inclus dans l'export) ;
-- le fichier doit être ouvert **en local** (`file://`) ou depuis un hébergement **http** du réseau local : une page en **https** (GitHub Pages, par ex.) ne peut pas appeler les modules, qui sont en http ;
-- les navigateurs récents peuvent demander l'autorisation d'**accéder aux appareils du réseau local** : acceptez ;
-- pour une prise Shelly **Gen1**, choisissez le type « Prise Gen1 » et activez l'option CORS dans les réglages de la prise.
+> Sur Android, un fichier ouvert depuis l'appli Fichiers (adresse `content://…`) **ne peut pas** contacter les modules : Chrome bloque tout accès au réseau local depuis ce type de page. L'appli affiche alors un avertissement : utilisez la version en ligne.
+
+**Mise en ligne avec GitHub Pages**
+
+1. Sur GitHub : *Settings → Pages → Build and deployment*, source **Deploy from a branch**, choisir la branche et le dossier `/ (root)`, puis *Save*. (GitHub Pages sur un dépôt privé nécessite un abonnement payant ; sinon rendez le dépôt public : il ne contient aucune adresse ni mot de passe, la configuration reste dans le navigateur.)
+2. Après une minute, l'appli est disponible à l'adresse `https://<utilisateur>.github.io/Domotique-/standalone/domotique.html`.
+3. Sur le téléphone, ouvrez cette adresse dans Chrome, puis *⋮ → Ajouter à l'écran d'accueil*.
+
+N'importe quel autre hébergement https de fichiers statiques convient aussi (Netlify, Cloudflare Pages…).
+
+**Premier lancement**
+
+1. La fenêtre **Modules** s'ouvre : renseignez l'adresse IP de chaque module, cliquez sur **Tester**, puis **Enregistrer**.
+2. Quand Chrome demande l'autorisation d'**accéder aux appareils du réseau local**, acceptez. En cas de refus par erreur : icône à gauche de l'adresse → *Autorisations*.
+3. **Exporter / Importer** permet de recopier la configuration d'un appareil (ou d'une adresse) à l'autre : chaque adresse a sa propre configuration.
+
+Conditions : l'appareil doit être sur le **même Wi-Fi** que les modules. En mode en ligne, l'authentification doit être **désactivée** sur les modules. Pour une prise Shelly **Gen1**, choisissez le type « Prise Gen1 » et activez l'option CORS dans ses réglages.
+
+Pour tester un mode précis, ajoutez `?transport=http` ou `?transport=ws` à l'adresse de la page.
 
 ## Fonctionnement (version serveur)
 

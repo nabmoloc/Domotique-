@@ -234,6 +234,11 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
 .btn-text.danger { color: var(--err); }
 .btn-text.small { padding: 6px 10px; font-size: 13px; }
 .empty button { margin-top: 12px; }
+.banner {
+  max-width: 1068px; margin: 8px auto 0; padding: 10px 14px; border-radius: 12px;
+  background: var(--on-soft); color: var(--text); border: 1px solid var(--on); font-size: 14px;
+}
+@media (max-width: 1100px) { .banner { margin: 8px 16px 0; } }
 @media (max-width: 640px) {
   .dev-row { grid-template-columns: 1fr 1fr; }
   .dev-row .name-input { grid-column: 1 / -1; }
@@ -255,6 +260,11 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
       </button>
     </div>
   </header>
+
+  <p class="banner" id="origin-banner" hidden>
+    Ce fichier est ouvert depuis le stockage du téléphone : Chrome y bloque l'accès aux modules du réseau local.
+    Ouvrez plutôt la version en ligne (adresse en https), puis ajoutez-la à l'écran d'accueil.
+  </p>
 
   <main id="rooms" aria-live="polite"></main>
 
@@ -574,20 +584,49 @@ function closeSockets() {
   sockets.clear();
 }
 
+// Mode de connexion selon la façon dont la page est ouverte :
+// - https (hébergement en ligne) : HTTP via fetch(). Chrome demande l'autorisation
+//   d'accéder au réseau local, puis lève le blocage « contenu mixte » pour les IP
+//   locales. Les WebSockets ws:// restent interdits depuis une page https.
+// - fichier local ou http : WebSocket (pas de restriction CORS, mot de passe géré).
+// « ?transport=http » ou « ?transport=ws » dans l'adresse force un mode.
+const TRANSPORT = new URLSearchParams(location.search).get('transport') || (location.protocol === 'https:' ? 'http' : 'ws');
+
+// Fichier ouvert depuis l'appli Fichiers d'Android (content://) ou autre contexte non sécurisé :
+// Chrome y interdit tout accès au réseau local, quelle que soit la méthode.
+const BLOCKED_ORIGIN = location.protocol === 'content:' || (!window.isSecureContext && location.protocol !== 'http:');
+
+// Espace d'adresses visé, annoncé à Chrome (« loopback » pour la machine elle-même).
+function addressSpace(host) {
+  return /^(https?:\/\/)?(localhost|127\.|\[::1\])/.test(host) ? 'loopback' : 'local';
+}
+
+const LNA_HINT = 'autorisez l\'accès aux appareils du réseau local (icône à gauche de l\'adresse → Autorisations)';
+
 // Quand la connexion échoue, cherche la cause la plus probable pour l'afficher.
 async function diagnose(device) {
-  if (location.protocol === 'https:') {
-    return 'cette page est ouverte en https : le navigateur interdit alors de contacter les modules (http). Ouvrez le fichier en local';
+  if (BLOCKED_ORIGIN) {
+    return 'Chrome bloque l\'accès au réseau local pour un fichier ouvert depuis le téléphone : ouvrez la version en ligne (https)';
   }
   try {
-    await fetch(baseUrl(device.host) + '/', { mode: 'no-cors', cache: 'no-store', signal: AbortSignal.timeout(TIMEOUT) });
-    return 'le module répond, mais le navigateur bloque la connexion (autorisez l\'accès aux appareils du réseau local pour cette page)';
+    await fetch(baseUrl(device.host) + '/', { mode: 'no-cors', cache: 'no-store', targetAddressSpace: addressSpace(device.host), signal: AbortSignal.timeout(TIMEOUT) });
+    return `le module répond, mais le navigateur bloque la connexion : ${LNA_HINT}`;
   } catch {
-    return 'module injoignable depuis ce navigateur (adresse IP, Wi-Fi, ou accès au réseau local refusé par le navigateur)';
+    return `module injoignable depuis ce navigateur : vérifiez l'adresse IP et le Wi-Fi, ou ${LNA_HINT}`;
   }
 }
 
 async function rpc(device, method, params = {}) {
+  if (TRANSPORT === 'http') {
+    try {
+      return await shellyGet(device, `/rpc/${method}?${new URLSearchParams(params)}`);
+    } catch (err) {
+      if (err.status === 401) {
+        throw new Error('mot de passe activé sur le module : non supporté dans la version en ligne, désactivez l\'authentification du module');
+      }
+      throw err;
+    }
+  }
   const key = `${device.host}|${device.password || ''}`;
   if (!sockets.has(key)) sockets.set(key, new ShellySocket(device.host, device.password));
   try {
@@ -601,13 +640,27 @@ async function rpc(device, method, params = {}) {
 async function shellyGet(device, path) {
   let res;
   try {
-    res = await fetch(baseUrl(device.host) + path, { cache: 'no-store', signal: AbortSignal.timeout(TIMEOUT) });
+    // Requête GET simple, sans en-tête personnalisé : pas de pré-vérification CORS.
+    res = await fetch(baseUrl(device.host) + path, {
+      cache: 'no-store',
+      targetAddressSpace: addressSpace(device.host),
+      signal: AbortSignal.timeout(TIMEOUT),
+    });
   } catch (err) {
     if (err.name === 'TimeoutError') throw new Error('module injoignable (délai dépassé)');
-    throw new Error('accès bloqué : activez l\'option CORS dans les réglages du module Gen1, ou vérifiez l\'adresse IP');
+    if (BLOCKED_ORIGIN) throw new Error(await diagnose(device));
+    if (device.type === 'switch-gen1') {
+      throw new Error(`accès bloqué : activez l'option CORS dans les réglages du module Gen1, vérifiez l'adresse IP, ou ${LNA_HINT}`);
+    }
+    throw new Error(await diagnose(device));
   }
-  if (res.status === 401) throw new Error('mot de passe activé sur le module Gen1 (non supporté)');
-  if (!res.ok) throw new Error(`erreur du module (HTTP ${res.status})`);
+  if (res.status === 401) {
+    throw Object.assign(new Error('mot de passe activé sur le module Gen1 (non supporté)'), { status: 401 });
+  }
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(`erreur du module : ${body.message || `HTTP ${res.status}`}`);
+  }
   return res.json();
 }
 
@@ -983,6 +1036,8 @@ importInput.addEventListener('change', async () => {
 });
 
 // ---- Démarrage -------------------------------------------------------------------
+
+document.getElementById('origin-banner').hidden = !BLOCKED_ORIGIN;
 
 const saved = loadDevices();
 if (saved) {
