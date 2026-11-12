@@ -5,6 +5,7 @@
 
 const http = require('node:http');
 const crypto = require('node:crypto');
+const vm = require('node:vm');
 
 const SPEED = 10; // % par seconde
 
@@ -131,7 +132,129 @@ function checkRpcAuth(auth, password, realm, nonces) {
   return auth.response === h(`${ha1}:${auth.nonce}:${auth.nc}:${auth.cnonce}:auth:${ha2}`);
 }
 
+// Erreur RPC renvoyée telle quelle au client (comme { code, message } sur un vrai module).
+class RpcError extends Error {
+  constructor(code, message) {
+    super(message);
+    this.code = code;
+  }
+}
+
+// Planificateur (Schedule.*), scripts (Script.*) et configuration système (Sys.GetConfig).
+// Les scripts s'exécutent dans un contexte vm qui imite l'API Shelly utilisée par l'appli.
+function addSystemHandlers(handlers) {
+  const call = (method, params) => {
+    const handler = handlers[method];
+    if (!handler) throw new RpcError(404, `No handler for ${method}`);
+    return handler(params || {});
+  };
+  const jobs = [];
+  let nextJob = 1;
+  let rev = 0;
+  const scripts = [];
+  let nextScript = 1;
+  const findScript = (id) => {
+    const script = scripts.find((x) => x.id === Number(id));
+    if (!script) throw new RpcError(-105, `Argument 'id', value ${id} not found!`);
+    return script;
+  };
+  const findJob = (id) => {
+    const job = jobs.find((x) => x.id === Number(id));
+    if (!job) throw new RpcError(-105, `Argument 'id', value ${id} not found!`);
+    return job;
+  };
+
+  Object.assign(handlers, {
+    'Sys.GetConfig': () => ({ device: { name: null }, location: { tz: 'Europe/Paris', lat: 48.85, lon: 2.35 } }),
+
+    'Schedule.List': () => ({ jobs, rev }),
+    'Schedule.Create': (p) => {
+      if (!p.timespec || !Array.isArray(p.calls) || !p.calls.length) throw new RpcError(-103, 'Invalid argument');
+      const job = { id: nextJob++, enable: p.enable !== false, timespec: p.timespec, calls: p.calls };
+      jobs.push(job);
+      return { id: job.id, rev: ++rev };
+    },
+    'Schedule.Update': (p) => {
+      const job = findJob(p.id);
+      for (const key of ['enable', 'timespec', 'calls']) if (p[key] !== undefined) job[key] = p[key];
+      return { rev: ++rev };
+    },
+    'Schedule.Delete': (p) => {
+      jobs.splice(jobs.indexOf(findJob(p.id)), 1);
+      return { rev: ++rev };
+    },
+    // Exécute immédiatement les commandes d'une tâche (n'existe pas sur un vrai module : sert aux tests).
+    'Sim.RunJob': (p) => ({ results: findJob(p.id).calls.map((c) => call(c.method, c.params)) }),
+
+    'Script.List': () => ({ scripts: scripts.map(({ id, name, enable, running }) => ({ id, name, enable, running })) }),
+    'Script.Create': (p) => {
+      const script = { id: nextScript++, name: p.name || `script_${nextScript}`, enable: false, running: false, code: '' };
+      scripts.push(script);
+      return { id: script.id };
+    },
+    'Script.PutCode': (p) => {
+      const script = findScript(p.id);
+      script.code = p.append ? script.code + p.code : p.code;
+      return { len: script.code.length };
+    },
+    'Script.GetCode': (p) => ({ data: findScript(p.id).code, left: 0 }),
+    'Script.SetConfig': (p) => {
+      const script = findScript(p.id);
+      Object.assign(script, p.config || {});
+      return { restart_required: false };
+    },
+    'Script.Start': (p) => {
+      const script = findScript(p.id);
+      const was_running = script.running;
+      script.context = vm.createContext({
+        Shelly: {
+          getComponentStatus: (type, id) => call(`${type[0].toUpperCase()}${type.slice(1)}.GetStatus`, { id }),
+          call: (method, params, callback) => {
+            const result = call(method, params);
+            if (callback) callback(result, 0, '');
+          },
+        },
+      });
+      vm.runInContext(script.code, script.context);
+      script.running = true;
+      return { was_running };
+    },
+    'Script.Stop': (p) => {
+      const script = findScript(p.id);
+      const was_running = script.running;
+      script.running = false;
+      return { was_running };
+    },
+    'Script.Delete': (p) => {
+      const script = findScript(p.id);
+      if (script.running) throw new RpcError(-103, 'Script is running');
+      scripts.splice(scripts.indexOf(script), 1);
+      return null;
+    },
+    'Script.Eval': (p) => {
+      const script = findScript(p.id);
+      if (!script.running) throw new RpcError(-103, 'Script is not running');
+      return { result: String(vm.runInContext(p.code, script.context)) };
+    },
+  });
+  return handlers;
+}
+
+// En HTTP GET, chaque paramètre est lu comme du JSON (comme sur les vrais modules).
+function parseQuery(searchParams) {
+  const params = {};
+  for (const [key, value] of searchParams) {
+    try {
+      params[key] = JSON.parse(value);
+    } catch {
+      params[key] = value;
+    }
+  }
+  return params;
+}
+
 function startDevice(port, name, handlers, password, { cors = !process.env.SIM_NO_CORS } = {}) {
+  addSystemHandlers(handlers);
   const realm = `shelly-${name}`;
   const nonces = new Set();
   const getHandler = (method) =>
@@ -164,8 +287,15 @@ function startDevice(port, name, handlers, password, { cors = !process.env.SIM_N
       res.writeHead(404, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ code: 404, message: `No handler for ${method}` }));
     }
+    let result;
+    try {
+      result = handler(parseQuery(url.searchParams));
+    } catch (err) {
+      res.writeHead(err.code === 404 ? 404 : 500, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ code: err.code ?? -1, message: err.message }));
+    }
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(handler(Object.fromEntries(url.searchParams))));
+    res.end(JSON.stringify(result));
   });
 
   // JSON-RPC sur WebSocket (ws://<ip>/rpc), comme les vrais modules.
@@ -190,7 +320,11 @@ function startDevice(port, name, handlers, password, { cors = !process.env.SIM_N
       }
       const handler = getHandler(frame.method);
       if (!handler) return reply({ error: { code: 404, message: `No handler for ${frame.method}` } });
-      reply({ result: handler(frame.params || {}) });
+      try {
+        reply({ result: handler(frame.params || {}) });
+      } catch (err) {
+        reply({ error: { code: err.code ?? -1, message: err.message } });
+      }
     });
   });
 

@@ -48,6 +48,19 @@ Conditions : l'appareil doit être sur le **même Wi-Fi** que les modules. En mo
 
 Pour tester un mode précis, ajoutez `?transport=http` ou `?transport=ws` à l'adresse de la page.
 
+**Programmations des volets**
+
+Le lien **Programmer** de chaque volet ouvre la liste des programmations enregistrées dans le module : elles s'exécutent même appli fermée. On peut en ajouter (à heure fixe ou au lever / coucher du soleil avec un décalage, jours au choix), les activer, désactiver ou supprimer.
+
+| Action | Effet |
+|---|---|
+| Fermer jusqu'à X % | descend à X % si le volet est plus ouvert, sinon ne bouge pas |
+| Ouvrir jusqu'à X % | monte à X % si le volet est plus fermé, sinon ne bouge pas |
+| Aller à la position | va à X % dans un sens ou dans l'autre |
+| Ouvrir / Fermer complètement | |
+
+« Fermer jusqu'à » et « Ouvrir jusqu'à » utilisent un petit script, `domotique-volet`, que l'appli installe et démarre automatiquement dans le module (avec démarrage automatique au redémarrage du module). Ne le supprimez pas tant que ces programmations existent. Le lever et le coucher du soleil nécessitent que la localisation du module soit réglée.
+
 ## Fonctionnement (version serveur)
 
 ```

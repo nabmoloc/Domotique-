@@ -240,6 +240,52 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
 .btn-text.danger { color: var(--err); }
 .btn-text.small { padding: 6px 10px; font-size: 13px; }
 .empty button { margin-top: 12px; }
+/* ---- Programmations ---- */
+.head-links { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+button.web-link { font: inherit; font-size: 13px; border: 0; background: none; cursor: pointer; }
+.sched-device { margin: 2px 0 0; color: var(--muted); font-size: 13.5px; }
+.sched-list { display: flex; flex-direction: column; gap: 8px; }
+.sched-empty { margin: 0; color: var(--muted); font-size: 14px; }
+.sched-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px;
+}
+.sched-row.disabled .sched-text { opacity: 0.5; }
+.sched-text { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.sched-what { color: var(--muted); font-size: 13.5px; }
+.sched-status { margin: 0; font-size: 13.5px; color: var(--muted); }
+.sched-status.ok { color: var(--ok); }
+.sched-status.err { color: var(--err); }
+.sched-form { display: flex; flex-direction: column; gap: 12px; border-top: 1px solid var(--border); padding-top: 14px; margin-top: 4px; }
+.sched-form h3 { margin: 0; font-size: 15px; }
+.sched-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+.sched-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.sched-grid input, .sched-grid select {
+  font: inherit; font-size: 15px; color: var(--text); background: var(--bg);
+  border: 1px solid var(--border); border-radius: 8px; padding: 8px; min-width: 0;
+}
+.sched-days { border: 0; margin: 0; padding: 0; display: flex; gap: 6px; flex-wrap: wrap; }
+.sched-days legend { font-size: 13px; color: var(--muted); padding: 0; margin-bottom: 6px; }
+.sched-days label { position: relative; }
+.sched-days input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.sched-days span {
+  display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%;
+  border: 1px solid var(--border); background: var(--bg); color: var(--muted); font-weight: 600;
+}
+.sched-days input:checked + span { background: var(--accent); border-color: var(--accent); color: #fff; }
+.sched-days input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sched-help { margin: 0; font-size: 13px; color: var(--muted); }
+.sched-form button[type="submit"] { align-self: flex-start; }
+.toggle { position: relative; width: 42px; height: 24px; flex-shrink: 0; }
+.toggle input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.toggle span { position: absolute; inset: 0; border-radius: 999px; background: var(--border); transition: background 0.2s; pointer-events: none; }
+.toggle span::after {
+  content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); transition: transform 0.2s;
+}
+.toggle input:checked + span { background: var(--accent); }
+.toggle input:checked + span::after { transform: translateX(18px); }
+.toggle input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
 .banner {
   max-width: 1068px; margin: 8px auto 0; padding: 10px 14px; border-radius: 12px;
   background: var(--on-soft); color: var(--text); border: 1px solid var(--on); font-size: 14px;
@@ -310,6 +356,77 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
     </form>
   </dialog>
 
+  <dialog id="schedules" aria-labelledby="sched-heading">
+    <div class="dlg-head">
+      <div>
+        <h2 id="sched-heading">Programmations</h2>
+        <p class="sched-device" id="sched-title"></p>
+      </div>
+      <button type="button" class="btn-text small" id="sched-close">Fermer</button>
+    </div>
+    <div class="dlg-body">
+      <p class="intro">Les programmations sont enregistrées dans le module : elles s'exécutent même quand l'appli est fermée ou le téléphone éteint.</p>
+      <div id="sched-list" class="sched-list"></div>
+      <p class="sched-status" id="sched-status" role="status" hidden></p>
+      <form id="sched-form" class="sched-form" novalidate>
+        <h3>Nouvelle programmation</h3>
+        <div class="sched-grid">
+          <label>Quand
+            <select id="sched-moment">
+              <option value="time">À heure fixe</option>
+              <option value="sunrise">Au lever du soleil</option>
+              <option value="sunset">Au coucher du soleil</option>
+            </select>
+          </label>
+          <label id="sched-time-field">Heure
+            <input type="time" id="sched-time" value="21:00">
+          </label>
+          <label id="sched-offset-field" hidden>Décalage en minutes (− avant, + après)
+            <input type="number" id="sched-offset" value="0" min="-720" max="720" step="5" inputmode="numeric">
+          </label>
+          <label>Action
+            <select id="sched-action">
+              <option value="close-to">Fermer jusqu'à</option>
+              <option value="open-to">Ouvrir jusqu'à</option>
+              <option value="goto">Aller à la position</option>
+              <option value="close">Fermer complètement</option>
+              <option value="open">Ouvrir complètement</option>
+            </select>
+          </label>
+          <label id="sched-pos-field">Position (% d'ouverture)
+            <input type="number" id="sched-pos" value="30" min="0" max="100" step="5" inputmode="numeric">
+          </label>
+        </div>
+        <fieldset class="sched-days">
+          <legend>Jours</legend>
+          <label><input type="checkbox" value="MON" checked><span title="Lundi">L</span></label>
+          <label><input type="checkbox" value="TUE" checked><span title="Mardi">M</span></label>
+          <label><input type="checkbox" value="WED" checked><span title="Mercredi">M</span></label>
+          <label><input type="checkbox" value="THU" checked><span title="Jeudi">J</span></label>
+          <label><input type="checkbox" value="FRI" checked><span title="Vendredi">V</span></label>
+          <label><input type="checkbox" value="SAT" checked><span title="Samedi">S</span></label>
+          <label><input type="checkbox" value="SUN" checked><span title="Dimanche">D</span></label>
+        </fieldset>
+        <p class="sched-help" id="sched-help"></p>
+        <button type="submit" class="btn-text primary">Ajouter</button>
+      </form>
+    </div>
+  </dialog>
+
+  <template id="tpl-sched-row">
+    <div class="sched-row">
+      <label class="toggle" title="Activer / désactiver">
+        <input type="checkbox" aria-label="Programmation active">
+        <span></span>
+      </label>
+      <div class="sched-text">
+        <strong class="sched-when"></strong>
+        <span class="sched-what"></span>
+      </div>
+      <button type="button" class="btn-text small danger sched-delete" aria-label="Supprimer">✕</button>
+    </div>
+  </template>
+
   <template id="tpl-device-row">
     <div class="dev-row">
       <input class="name-input" data-field="name" placeholder="Nom" aria-label="Nom" required>
@@ -346,10 +463,16 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
           <h3 class="name"></h3>
           <span class="badge"></span>
         </div>
-        <a class="web-link" target="_blank" rel="noopener" title="Ouvrir l'interface du module">
-          Réglages
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
-        </a>
+        <div class="head-links">
+          <button type="button" class="web-link sched-btn" title="Programmations du volet">
+            Programmer
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>
+          </button>
+          <a class="web-link" target="_blank" rel="noopener" title="Ouvrir l'interface du module">
+            Réglages
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
+          </a>
+        </div>
       </div>
       <div class="cover-body">
         <div class="window" aria-hidden="true">
@@ -635,6 +758,14 @@ function addressSpace(host) {
 
 const LNA_HINT = 'autorisez l\'accès aux appareils du réseau local (icône à gauche de l\'adresse → Autorisations)';
 
+// En HTTP GET, le module lit chaque paramètre comme du JSON : chaînes entre guillemets,
+// objets et tableaux sérialisés.
+function rpcQuery(params) {
+  return new URLSearchParams(
+    Object.entries(params).map(([k, v]) => [k, typeof v === 'string' || typeof v === 'object' ? JSON.stringify(v) : String(v)])
+  );
+}
+
 async function lnaPermission() {
   for (const name of ['local-network-access', 'local-network']) {
     try {
@@ -694,7 +825,7 @@ async function transportFor(device) {
 async function rpc(device, method, params = {}) {
   if ((await transportFor(device)) === 'http') {
     try {
-      return await shellyGet(device, `/rpc/${method}?${new URLSearchParams(params)}`);
+      return await shellyGet(device, `/rpc/${method}?${rpcQuery(params)}`);
     } catch (err) {
       if (err.status === 401) {
         throw new Error('mot de passe activé sur le module : non supporté dans la version en ligne, désactivez l\'authentification du module');
@@ -937,6 +1068,7 @@ function createCard(device) {
   el.querySelectorAll('[data-action]').forEach((btn) => {
     btn.addEventListener('click', () => runAction(device.id, btn.dataset.action));
   });
+  el.querySelector('.sched-btn')?.addEventListener('click', () => openSchedules(device.id));
 
   getRoom(device.room).querySelector('.grid').append(el);
   return el;
@@ -1107,6 +1239,247 @@ refreshBtn.addEventListener('click', poll);
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) clearTimeout(pollTimer);
   else poll();
+});
+
+// ---- Programmations (planificateur intégré au module) ----------------------------
+//
+// Les tâches sont enregistrées dans le module (Schedule.*) : elles s'exécutent même
+// quand l'appli est fermée. « Fermer jusqu'à » / « Ouvrir jusqu'à » s'appuient sur un
+// petit script installé automatiquement dans le module et appelé via Script.Eval.
+
+const SCRIPT_NAME = 'domotique-volet';
+const SCRIPT_CODE = [
+  '// Installe par le tableau de bord Domotique : ne pas renommer ni supprimer',
+  '// tant que des programmations "Fermer/Ouvrir jusqu\'a" l\'utilisent.',
+  '// allerVers("fermer", 30) : descend a 30 % si le volet est plus ouvert, sinon ne bouge pas.',
+  '// allerVers("ouvrir", 70) : monte a 70 % si le volet est plus ferme, sinon ne bouge pas.',
+  'function allerVers(sens, pos) {',
+  '  let s = Shelly.getComponentStatus("cover", 0);',
+  '  if (!s.pos_control) return "volet non calibre";',
+  '  let actuel = s.current_pos;',
+  '  if ((sens === "fermer" && actuel > pos) || (sens === "ouvrir" && actuel < pos)) {',
+  '    Shelly.call("Cover.GoToPosition", { id: 0, pos: pos });',
+  '    return "de " + actuel + " vers " + pos;',
+  '  }',
+  '  return "rien a faire (deja a " + actuel + ")";',
+  '}',
+].join('\n');
+
+const DAYS = [
+  ['MON', 'L', 'lun'],
+  ['TUE', 'M', 'mar'],
+  ['WED', 'M', 'mer'],
+  ['THU', 'J', 'jeu'],
+  ['FRI', 'V', 'ven'],
+  ['SAT', 'S', 'sam'],
+  ['SUN', 'D', 'dim'],
+];
+
+function describeDays(field) {
+  if (field === '*') return 'tous les jours';
+  const names = field.split(',').map((d) => (/^\d$/.test(d) ? DAYS[(Number(d) + 6) % 7][0] : d.toUpperCase()));
+  const keys = DAYS.map(([k]) => k).filter((k) => names.includes(k));
+  if (keys.length !== names.length) return field;
+  const key = keys.join(',');
+  if (keys.length === 7) return 'tous les jours';
+  if (key === 'MON,TUE,WED,THU,FRI') return 'du lundi au vendredi';
+  if (key === 'SAT,SUN') return 'le week-end';
+  return DAYS.filter(([k]) => keys.includes(k)).map(([, , label]) => label).join(', ');
+}
+
+function describeTimespec(ts) {
+  let m = ts.match(/^0 (\d{1,2}) (\d{1,2}) \* \* (\S+)$/);
+  if (m) return `${m[2].padStart(2, '0')}:${m[1].padStart(2, '0')}, ${describeDays(m[3])}`;
+  m = ts.match(/^@(sunrise|sunset)([+-]\S+)?(?: \S+ \S+ (\S+))?$/);
+  if (m) {
+    const units = { h: 'h', m: 'min', s: 's', '': 's' };
+    const offset = m[2]
+      ? ` ${m[2][0] === '-' ? '−' : '+'} ${m[2].slice(1).replace(/(\d+(?:\.\d+)?)([hms]?)/g, (_, n, u) => `${n} ${units[u]} `).trim()}`
+      : '';
+    return `${m[1] === 'sunrise' ? 'Lever du soleil' : 'Coucher du soleil'}${offset}, ${describeDays(m[3] || '*')}`;
+  }
+  return ts;
+}
+
+function buildTimespec({ moment, time, offset, days }) {
+  const dayField = days.length === 7 ? '*' : days.join(',');
+  if (moment === 'time') {
+    const [h, min] = time.split(':').map(Number);
+    return `0 ${min} ${h} * * ${dayField}`;
+  }
+  const minutes = Math.round(offset) || 0;
+  return `@${moment}${minutes ? `${minutes > 0 ? '+' : '-'}${Math.abs(minutes)}m` : ''} * * ${dayField}`;
+}
+
+function describeCall(call) {
+  const p = call.params || {};
+  if (call.method === 'Script.Eval') {
+    const m = String(p.code).match(/allerVers\("(fermer|ouvrir)",\s*(\d+)\)/);
+    if (m) return `${m[1] === 'fermer' ? 'Fermer' : 'Ouvrir'} jusqu'à ${m[2]} %`;
+  }
+  if (call.method === 'Cover.GoToPosition') return `Aller à ${p.pos} %`;
+  if (call.method === 'Cover.Open') return 'Ouvrir complètement';
+  if (call.method === 'Cover.Close') return 'Fermer complètement';
+  if (call.method === 'Cover.Stop') return 'Arrêter';
+  return call.method;
+}
+
+function buildCall(action, pos, scriptId) {
+  switch (action) {
+    case 'close-to':
+      return { method: 'Script.Eval', params: { id: scriptId, code: `allerVers("fermer", ${pos})` } };
+    case 'open-to':
+      return { method: 'Script.Eval', params: { id: scriptId, code: `allerVers("ouvrir", ${pos})` } };
+    case 'goto':
+      return { method: 'Cover.GoToPosition', params: { id: 0, pos } };
+    case 'open':
+      return { method: 'Cover.Open', params: { id: 0 } };
+    default:
+      return { method: 'Cover.Close', params: { id: 0 } };
+  }
+}
+
+// Installe (si besoin) le script « Fermer/Ouvrir jusqu'à », active son démarrage
+// automatique et le lance. Renvoie son identifiant.
+async function ensureScript(device) {
+  const { scripts } = await rpc(device, 'Script.List');
+  let script = scripts.find((s) => s.name === SCRIPT_NAME);
+  if (!script) {
+    const { id } = await rpc(device, 'Script.Create', { name: SCRIPT_NAME });
+    await rpc(device, 'Script.PutCode', { id, code: SCRIPT_CODE });
+    script = { id, enable: false, running: false };
+  }
+  if (!script.enable) await rpc(device, 'Script.SetConfig', { id: script.id, config: { enable: true } });
+  if (!script.running) await rpc(device, 'Script.Start', { id: script.id });
+  return script.id;
+}
+
+async function checkLocation(device) {
+  const { location } = await rpc(device, 'Sys.GetConfig');
+  if (location?.lat == null || location?.lon == null) {
+    throw new Error('la localisation du module n\'est pas réglée (nécessaire pour le lever et le coucher du soleil) : renseignez-la dans l\'interface du module');
+  }
+}
+
+const schedDialog = document.getElementById('schedules');
+const schedList = document.getElementById('sched-list');
+const schedStatus = document.getElementById('sched-status');
+const schedForm = document.getElementById('sched-form');
+let schedDevice = null;
+
+function setSchedStatus(message, kind = '') {
+  schedStatus.hidden = !message;
+  schedStatus.className = `sched-status ${kind}`;
+  schedStatus.textContent = message;
+}
+
+function openSchedules(id) {
+  schedDevice = devices.find((d) => d.id === id);
+  document.getElementById('sched-title').textContent = schedDevice.name;
+  setSchedStatus('');
+  updateSchedForm();
+  schedDialog.showModal();
+  refreshSchedules();
+}
+
+async function refreshSchedules() {
+  const device = schedDevice;
+  schedList.innerHTML = '<p class="sched-empty">Chargement…</p>';
+  let jobs;
+  try {
+    ({ jobs } = await rpc(device, 'Schedule.List'));
+  } catch (err) {
+    schedList.innerHTML = '';
+    setSchedStatus(`Impossible de lire les programmations : ${err.message}`, 'err');
+    return;
+  }
+  if (device !== schedDevice) return;
+  schedList.textContent = '';
+  if (!jobs.length) {
+    schedList.innerHTML = '<p class="sched-empty">Aucune programmation sur ce module.</p>';
+    return;
+  }
+  for (const job of jobs) {
+    const row = clone('tpl-sched-row');
+    row.querySelector('.sched-when').textContent = describeTimespec(job.timespec);
+    row.querySelector('.sched-what').textContent = job.calls.map(describeCall).join(' + ');
+    const toggle = row.querySelector('input');
+    toggle.checked = job.enable;
+    row.classList.toggle('disabled', !job.enable);
+    toggle.addEventListener('change', async () => {
+      try {
+        await rpc(device, 'Schedule.Update', { id: job.id, enable: toggle.checked });
+        row.classList.toggle('disabled', !toggle.checked);
+      } catch (err) {
+        toggle.checked = !toggle.checked;
+        setSchedStatus(`Modification impossible : ${err.message}`, 'err');
+      }
+    });
+    row.querySelector('.sched-delete').addEventListener('click', async () => {
+      if (!confirm(`Supprimer la programmation « ${describeTimespec(job.timespec)} : ${describeCall(job.calls[0])} » ?`)) return;
+      try {
+        await rpc(device, 'Schedule.Delete', { id: job.id });
+        refreshSchedules();
+      } catch (err) {
+        setSchedStatus(`Suppression impossible : ${err.message}`, 'err');
+      }
+    });
+    schedList.append(row);
+  }
+}
+
+const SCHED_HELP = {
+  'close-to': (p) => `Le volet descend à ${p} % s'il est plus ouvert. S'il est déjà plus fermé, il ne bouge pas.`,
+  'open-to': (p) => `Le volet monte à ${p} % s'il est plus fermé. S'il est déjà plus ouvert, il ne bouge pas.`,
+  goto: (p) => `Le volet va à ${p} %, en montant ou en descendant selon sa position.`,
+  open: () => 'Le volet s\'ouvre complètement.',
+  close: () => 'Le volet se ferme complètement.',
+};
+
+function updateSchedForm() {
+  const moment = document.getElementById('sched-moment').value;
+  const action = document.getElementById('sched-action').value;
+  document.getElementById('sched-time-field').hidden = moment !== 'time';
+  document.getElementById('sched-offset-field').hidden = moment === 'time';
+  document.getElementById('sched-pos-field').hidden = action === 'open' || action === 'close';
+  document.getElementById('sched-help').textContent = SCHED_HELP[action](document.getElementById('sched-pos').value || '…');
+}
+
+schedForm.addEventListener('input', updateSchedForm);
+document.getElementById('sched-close').addEventListener('click', () => schedDialog.close());
+schedDialog.addEventListener('close', () => (schedDevice = null));
+
+schedForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const device = schedDevice;
+  const moment = document.getElementById('sched-moment').value;
+  const action = document.getElementById('sched-action').value;
+  const pos = Number(document.getElementById('sched-pos').value);
+  const days = [...schedForm.querySelectorAll('.sched-days input:checked')].map((i) => i.value);
+  if (!days.length) return setSchedStatus('Choisissez au moins un jour.', 'err');
+  if (!['open', 'close'].includes(action) && !(Number.isInteger(pos) && pos >= 0 && pos <= 100)) {
+    return setSchedStatus('La position doit être un nombre entier entre 0 et 100.', 'err');
+  }
+  const timespec = buildTimespec({
+    moment,
+    time: document.getElementById('sched-time').value,
+    offset: Number(document.getElementById('sched-offset').value),
+    days,
+  });
+  const submit = schedForm.querySelector('button[type="submit"]');
+  submit.disabled = true;
+  setSchedStatus('Enregistrement dans le module…');
+  try {
+    if (moment !== 'time') await checkLocation(device);
+    const scriptId = action.endsWith('-to') ? await ensureScript(device) : null;
+    await rpc(device, 'Schedule.Create', { enable: true, timespec, calls: [buildCall(action, pos, scriptId)] });
+    setSchedStatus(`Programmation ajoutée : ${describeTimespec(timespec)}.`, 'ok');
+    if (device === schedDevice) refreshSchedules();
+  } catch (err) {
+    setSchedStatus(`Échec : ${err.message}`, 'err');
+  } finally {
+    submit.disabled = false;
+  }
 });
 
 // ---- Réglages ------------------------------------------------------------------
